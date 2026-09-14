@@ -48,9 +48,6 @@ HaploGrep v3 / PhyloTree v17.0 haplogroup assignment
 ```
 01_reference_panel/
 ├── README.md
-├── sequence.fasta                   # Raw downloaded sequences (68,670, GenBank/MitoMap, 18 May 2026)
-├── filtered/
-│   └── filtered_msa.fasta           # Final filtered MSA (58,808 sequences × 16,569 positions)
 ├── impute2_panel/                   # Final QC'd .hap.gz, .legend.gz, .samples + recombination map
 ├── haplogroups/
 │   ├── haplogrep_output.txt         # HaploGrep v3 / PhyloTree v17.0 calls for panel samples
