@@ -2,9 +2,83 @@
 
 **Objective:** To develop an mtDNA imputation reference panel using publicly available mitochondrial genome sequences.
 
-## Methods
+The panel was constructed following the workflow outlined by McInerney et al. (2021), implemented here using the reference alignment and resources distributed with [MitoImpute](https://github.com/sjfandrews/MitoImpute) (Sherman et al.).
 
-The mtDNA imputation reference panel was constructed using the workflow outlined by McInerney et al. (2021).
+## Pipeline summary
+
+```
+sequence.fasta (68,670 raw sequences, GenBank/MitoMap, 18 May 2026)
+        │
+        ▼
+[01_align.pbs]
+  1a. Split into batches of 2,500 sequences
+  1b. MAFFT v7.453 --add --keeplength --reorder --thread 16
+      against hsapiensCRS7k.fasta (7,747-seq reference MSA, MitoImpute repo)
+  1c. Merge aligned batches (reference seqs taken once; de-duplicated)
+  1d. Remove alignment columns where rCRS has a gap (insertions relative to rCRS)
+        │
+        ▼  aligned/full_msa_rcrs_trimmed.fasta
+[02_filter.pbs]
+  Exclude sequences with ≥5 ambiguous bases OR ≥8 gap characters
+  (rCRS always retained regardless of stats)
+        │
+        ▼  filtered/filtered_msa.fasta  (+ filter_report.tsv, excluded_ids.txt)
+[03_msa_to_vcf.pbs → msa_to_vcf.py]
+  Memory-mapped column-wise MSA → VCF conversion
+  rCRS defines REF; gaps/IUPAC codes → missing; invariant sites skipped
+        │
+        ▼  data/vcf/mtdna_raw.vcf
+[04_vcf_process — pending]
+  bcftools: remove any residual invariant/fully-missing sites,
+  bcftools norm -m -any (multiallelic → biallelic)
+        │
+        ▼
+[05_vcf_to_impute2 — pending]
+  bcftools --haploid2diploid → IMPUTE2 format (.hap.gz/.legend.gz/.samples)
+  + zero-recombination map
+        │
+        ▼  impute2_panel/
+HaploGrep v3 / PhyloTree v17.0 haplogroup assignment
+        │
+        ▼  haplogroups/
+```
+
+## Directory contents
+
+```
+01_reference_panel/
+├── README.md
+├── sequence.fasta                   # Raw downloaded sequences (68,670, GenBank/MitoMap, 18 May 2026)
+├── aligned/
+│   ├── batches/                     # Raw sequences split into 2,500-sequence batches
+│   ├── aligned_batches/             # Each batch aligned to hsapiensCRS7k.fasta via MAFFT --add
+│   ├── full_msa.fasta               # Merged alignment (reference + all newly aligned sequences)
+│   └── full_msa_rcrs_trimmed.fasta  # Insertion columns relative to rCRS removed
+├── filtered/
+│   ├── filtered_msa.fasta           # Final filtered MSA (58,808 sequences × 16,569 positions)
+│   ├── filter_report.tsv            # Per-sequence ambiguous-base/gap counts and pass/fail status
+│   └── excluded_ids.txt             # Accessions excluded by the quality filter
+├── data/
+│   └── vcf/
+│       └── mtdna_raw.vcf            # Raw VCF output from msa_to_vcf.py
+├── impute2_panel/                   # Final QC'd .hap.gz, .legend.gz, .samples + recombination map
+├── haplogroups/
+│   ├── haplogrep_output.txt         # HaploGrep v3 / PhyloTree v17.0 calls for panel samples
+│   └── Reference_panel_haplogroup_composition_donut.png
+├── scripts/
+│   ├── 01_align.pbs
+│   ├── 02_filter.pbs
+│   ├── 03_msa_to_vcf.pbs
+│   ├── msa_to_vcf.py
+│   ├── 04_vcf_process.pbs           # pending — bcftools norm / invariant-site cleanup
+│   └── 05_vcf_to_impute2.pbs        # pending — IMPUTE2 format + recombination map
+└── logs/
+    ├── 01_align.log
+    ├── 02_filter.log
+    └── 03_msa_to_vcf.log
+```
+
+## Methods
 
 ### Sequence identification and download
 
@@ -16,101 +90,54 @@ NOT (unverified OR Homo sp. Altai OR Denisova hominin OR neanderthalensis
 OR heidelbergensis OR consensus)
 ```
 
-A total of 68,670 mtDNA sequences were identified and downloaded in FASTA format on 18 May 2026.
+A total of 68,670 mtDNA sequences were identified and downloaded in FASTA format (`sequence.fasta`) on 18 May 2026.
 
-### Alignment
+### Alignment (`01_align.pbs`)
 
-The downloaded sequences were aligned in batches of 2,500 to a reference multiple sequence alignment (MSA) comprising 7,747 complete mtDNA sequences (McInerney et al., 2021) using MAFFT v7.453 (Katoh & Frith, 2012). The `--add` and `--keeplength` options were used to add the sequences to the existing alignment without altering its gap structure. The rCRS was included in the reference MSA and used to maintain standard mitochondrial genome coordinates. Alignment columns corresponding to insertions relative to the rCRS were removed. The rCRS placeholder at position m.3107 was retained during alignment processing to preserve coordinate consistency across downstream positions (Salas et al., 2012).
+Raw sequences were split into batches of 2,500. Each batch was aligned against a 7,747-sequence reference MSA (`hsapiensCRS7k.fasta`, sourced from the [MitoImpute](https://github.com/sjfandrews/MitoImpute) repository; McInerney et al., 2021) using MAFFT v7.453 (Katoh & Frith, 2012), with the `--add --keeplength --reorder` options and 16 threads. The rCRS (NC_012920.1) was present in the reference MSA and used to anchor standard mitochondrial genome coordinates.
 
-### Filtering
+Aligned batches were merged: reference sequences were retained once (from the first batch output), and only newly aligned, non-duplicate sequences were appended from each subsequent batch (`full_msa.fasta`).
 
-Sequences containing more than five ambiguous bases or eight or more gap characters were excluded, resulting in a filtered MSA comprising 58,808 sequences spanning 16,569 mitochondrial genome positions. The eight-gap exclusion threshold was recommended by McInerney et al. (2021) to avoid excluding sequences belonging to haplogroup B, which is characterised by a nine base-pair deletion (Ramírez-Molina et al., 2026).
+Alignment columns corresponding to insertions relative to the rCRS (i.e., columns where the rCRS carries a gap) were then removed, producing `full_msa_rcrs_trimmed.fasta`.
 
-### MSA to VCF conversion
+### Quality filtering (`02_filter.pbs`)
 
-The filtered MSA was converted to VCF format using a custom Python script. At each alignment column, the rCRS base defined the reference (REF) allele, while gap characters and IUPAC ambiguous bases were coded as missing. Sites at which the rCRS carried an "N" (i.e., position 3,107) were excluded from the VCF; however, their position was retained in the coordinate system to preserve rCRS numbering at all downstream sites.
+Sequences with **≥5 ambiguous (non-ACGT) bases or ≥8 gap characters** were excluded; the rCRS was retained regardless of its stats. This produced a filtered MSA of 58,808 sequences spanning 16,569 mitochondrial genome positions. The 8-gap threshold follows McInerney et al. (2021) and avoids excluding haplogroup B sequences, which carry a characteristic 9 bp deletion (Ramírez-Molina et al., 2026).
 
-Invariant and fully missing sites were removed using BCFtools v1.3 (Danecek et al., 2021). Multi-allelic sites were converted to biallelic records using:
+> **Note for methods write-up:** the script excludes sequences at *≥5* ambiguous bases (i.e. 5 or more), not *>5* ("more than five") — worth double-checking this wording against your thesis text so the threshold described matches the script exactly.
 
-```
-bcftools norm -m -any
-```
+A per-sequence report (`filter_report.tsv`) and list of excluded accessions (`excluded_ids.txt`) are written alongside the filtered MSA.
 
-### IMPUTE2 panel formatting
+### MSA → VCF conversion (`03_msa_to_vcf.pbs`, `msa_to_vcf.py`)
 
-The reference panel VCF file was converted to IMPUTE2-compatible (Howie et al., 2009) formats using BCFtools, producing `.hap.gz`, `.legend.gz`, and `.samples` files. The `--haploid2diploid` flag was used to convert haploid mtDNA genotypes to phased homozygous diploid format to accommodate the input requirements for IMPUTE2.
+The filtered MSA was converted to VCF format using a custom, memory-mapped Python script (`msa_to_vcf.py`) rather than loading the full sequence matrix into memory, keeping RAM usage roughly constant (~60 KB per column) regardless of panel size. At each alignment column, the rCRS base defined the REF allele; gap characters and IUPAC ambiguous bases were coded as missing (`.`).
 
-A recombination map was created by assigning a recombination rate of zero to all variant sites, consistent with the non-recombining nature of the mitochondrial genome.
+Where the rCRS itself carried an "N" (position 3,107), no VCF record was written for that site, but the rCRS coordinate counter was still incremented — preserving correct rCRS numbering at all downstream positions (Salas et al., 2012). Invariant sites (no alternate allele among samples) were also identified and skipped at this stage.
+
+### Downstream QC and IMPUTE2 formatting (pending scripts)
+
+The remaining steps — removing any residual invariant/fully-missing sites and normalising multiallelic sites with `bcftools norm -m -any`, then converting to IMPUTE2 format (`.hap.gz`, `.legend.gz`, `.samples`) via `bcftools --haploid2diploid`, and generating a zero-recombination map — follow as previously described but haven't been uploaded here yet. Add `04_vcf_process.pbs` and `05_vcf_to_impute2.pbs` (or equivalents) to `scripts/` once available.
 
 ### Haplogroup assignment
 
-Haplogroups for individual samples in the reference panel were obtained using HaploGrep v3 and PhyloTree v17.0.
-
-## Pipeline summary
-
-```
-MitoMap/GenBank search (68,670 sequences, 18 May 2026)
-        │
-        ▼
-MAFFT v7.453 alignment (--add --keeplength) to McInerney et al. (2021)
-7,747-sequence reference MSA, batches of 2,500
-        │
-        ▼
-Remove insertion columns relative to rCRS; retain m.3107 placeholder
-        │
-        ▼
-Filter: >5 ambiguous bases OR ≥8 gap characters excluded
-        → 58,808 sequences × 16,569 positions
-        │
-        ▼
-Custom Python script: MSA → VCF (rCRS = REF; gaps/IUPAC codes = missing;
-m.3107 excluded from VCF but retained in coordinate system)
-        │
-        ▼
-BCFtools v1.3: remove invariant/fully missing sites;
-bcftools norm -m -any (multiallelic → biallelic)
-        │
-        ▼
-BCFtools --haploid2diploid → IMPUTE2 format
-(.hap.gz, .legend.gz, .samples) + zero-recombination map
-        │
-        ▼
-HaploGrep v3 / PhyloTree v17.0 haplogroup assignment
-```
-
-## Directory contents
-
-```
-01_reference_panel/
-├── README.md
-├── data/
-│   ├── raw_sequences/          # 68,670 downloaded FASTA sequences (18 May 2026)
-│   ├── reference_msa/          # McInerney et al. (2021) 7,747-sequence MSA + rCRS
-│   └── filtered_msa/           # Filtered MSA: 58,808 sequences × 16,569 positions
-├── scripts/
-│   ├── 01_align_mafft.pbs            # MAFFT --add --keeplength, batches of 2,500
-│   ├── 02_filter_sequences.pbs       # Ambiguous base / gap character filtering
-│   └── 03_msa_to_vcf.py              # Custom MSA → VCF conversion script
-├── vcf/                         # Reference panel VCF (post bcftools norm -m -any)
-├── impute2_panel/               # .hap.gz, .legend.gz, .samples, recombination map
-└── haplogroups/                 # HaploGrep3 / PhyloTree v17.0 haplogroup calls
-```
+Haplogroups for individual reference panel samples were obtained using HaploGrep v3 and PhyloTree v17.0. The resulting composition (see `haplogroups/Reference_panel_haplogroup_composition_donut.png`) is dominated by haplogroups H, L, and M, with broad representation across most major mtDNA haplogroups (A–Z), consistent with a globally diverse panel suited to imputation across multiple mitochondrial lineages.
 
 ## Inputs
 
-- MitoMap/GenBank search results (FASTA sequences)
-- McInerney et al. (2021) reference MSA (7,747 sequences) including rCRS
+- `sequence.fasta` — GenBank/MitoMap search results (68,670 sequences)
+- `hsapiensCRS7k.fasta` — MitoImpute reference MSA (7,747 sequences, incl. rCRS)
 
 ## Outputs
 
-- Filtered MSA (58,808 sequences × 16,569 positions)
-- Reference panel VCF (biallelic, invariant/missing sites removed)
-- IMPUTE2-format reference panel (`.hap.gz`, `.legend.gz`, `.samples`) and recombination map
-- Haplogroup assignments for reference panel samples
+- `filtered/filtered_msa.fasta` — filtered MSA (58,808 sequences × 16,569 positions)
+- `data/vcf/mtdna_raw.vcf` — raw VCF
+- `impute2_panel/` — final IMPUTE2-format reference panel + recombination map
+- `haplogroups/` — HaploGrep3/PhyloTree haplogroup calls and composition figure
 
 ## Software
 
 - MAFFT v7.453 (Katoh & Frith, 2012)
+- Biopython 1.81
 - BCFtools v1.3 (Danecek et al., 2021)
 - IMPUTE2 (Howie et al., 2009)
 - HaploGrep v3
