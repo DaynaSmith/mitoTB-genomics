@@ -48,7 +48,7 @@ HaploGrep v3 / PhyloTree v17.0 haplogroup assignment
 ```
 01_reference_panel/
 ├── README.md
-├── impute2_panel/                   # Final QC'd .hap.gz, .legend.gz, .samples + recombination map
+├── impute2_panel/                   # Final QC'd .hap.gz, .legend.gz + recombination map
 ├── haplogroups/
 │   ├── haplogrep_output.txt         # HaploGrep v3 / PhyloTree v17.0 calls for panel samples
 │   └── Reference_panel_haplogroup_composition_donut.png
