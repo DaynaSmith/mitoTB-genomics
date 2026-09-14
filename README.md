@@ -38,14 +38,6 @@ To investigate mitochondrial gene expression in relation to TB status and mitoch
 4. Investigate whether mitochondrial gene expression differs according to mitochondrial haplogroup.
 5. Evaluate whether previously reported differences in mitochondrial gene expression between African L and non-L mitochondrial haplogroups are replicated in southern African populations.
 
-### Aim 4: Evolutionary and population-genomic patterns of mtDNA variation
-To investigate the evolutionary and population-genomic patterns underlying mitochondrial DNA variation and mitochondrial gene expression in African populations.
-
-1. Characterise patterns of homoplasmic and heteroplasmic mtDNA variation across southern African and African-descended populations.
-2. Compare the distribution and frequency of mtDNA variation across mitochondrial haplogroups, maternal lineages, and populations.
-3. Investigate the relationship between mitochondrial heteroplasmy and maternal evolutionary history using fine-scale mitochondrial haplogroup classification.
-4. Investigate how recurrent and lineage-associated heteroplasmic variation contributes to patterns of mitochondrial diversity.
-
 ## Repository Structure
 
 ```
@@ -53,7 +45,6 @@ To investigate the evolutionary and population-genomic patterns underlying mitoc
 ├── aim1_mtdna_variation/          # Imputation panel development, miWAS, haplogroup association
 ├── aim2_heteroplasmy/             # Heteroplasmy detection, burden analysis, sequence context
 ├── aim3_gene_expression/          # RNA-seq processing, differential expression, pathway analysis
-├── aim4_population_genomics/      # Population/evolutionary analyses of mtDNA variation
 ├── data/                          # Raw data pointers / metadata (no controlled-access data committed)
 ├── docs/                          # Supplementary documentation, notes, protocols
 ├── envs/                          # Conda/renv/environment specification files
@@ -61,7 +52,7 @@ To investigate the evolutionary and population-genomic patterns underlying mitoc
 └── results/                       # Summary outputs, figures, tables (non-sensitive only)
 ```
 
-*Note: Directory structure will be populated and refined as each aim's analyses are developed. Controlled-access genotype, sequencing, and clinical data are not stored in this repository; only code, intermediate/derived non-identifiable files, and documentation are included.*
+*Note: Controlled-access genotype, sequencing, and clinical data are not stored in this repository; only code, intermediate/derived non-identifiable files, and documentation are included.*
 
 ## Requirements
 
