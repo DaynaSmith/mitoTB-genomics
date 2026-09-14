@@ -20,7 +20,3 @@ Reference panel construction  →  Reference panel validation  →  Imputation +
 ```
 
 Each stage's directory README documents the specific methods, scripts, inputs, and outputs for that stage.
-
-## Dependencies
-
-See [`../envs/`](../envs) for environment/package specifications (MAFFT, BCFtools, IMPUTE2, HaploGrep3, etc.) relevant to this aim.
