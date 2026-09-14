@@ -22,18 +22,16 @@ sequence.fasta (68,670 raw sequences, GenBank/MitoMap, 18 May 2026)
   Exclude sequences with ≥5 ambiguous bases OR ≥8 gap characters
   (rCRS always retained regardless of stats)
         │
-        ▼  filtered/filtered_msa.fasta  (+ filter_report.tsv, excluded_ids.txt)
+        ▼  filtered/filtered_msa.fasta
 [03_msa_to_vcf.pbs → msa_to_vcf.py]
   Memory-mapped column-wise MSA → VCF conversion
   rCRS defines REF; gaps/IUPAC codes → missing; invariant sites skipped
         │
         ▼  data/vcf/mtdna_raw.vcf
-[04_vcf_process — pending]
   bcftools: remove any residual invariant/fully-missing sites,
   bcftools norm -m -any (multiallelic → biallelic)
         │
         ▼
-[05_vcf_to_impute2 — pending]
   bcftools --haploid2diploid → IMPUTE2 format (.hap.gz/.legend.gz/.samples)
   + zero-recombination map
         │
