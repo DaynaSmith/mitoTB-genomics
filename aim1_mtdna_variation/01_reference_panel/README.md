@@ -95,23 +95,13 @@ The filtered MSA was converted to VCF format using a custom, memory-mapped Pytho
 
 Where the rCRS itself carried an "N" (position 3,107), no VCF record was written for that site, but the rCRS coordinate counter was still incremented — preserving correct rCRS numbering at all downstream positions (Salas et al., 2012). Invariant sites (no alternate allele among samples) were also identified and skipped at this stage.
 
-### Downstream QC and IMPUTE2 formatting (pending scripts)
+### Downstream QC and IMPUTE2 formatting
 
-The remaining steps — removing any residual invariant/fully-missing sites and normalising multiallelic sites with `bcftools norm -m -any`, then converting to IMPUTE2 format (`.hap.gz`, `.legend.gz`, `.samples`) via `bcftools --haploid2diploid`, and generating a zero-recombination map — follow as previously described but haven't been uploaded here yet. Add `04_vcf_process.pbs` and `05_vcf_to_impute2.pbs` (or equivalents) to `scripts/` once available.
+The remaining steps — removing any residual invariant/fully-missing sites and normalising multiallelic sites with `bcftools norm -m -any`, then converting to IMPUTE2 format (`.hap.gz`, `.legend.gz`, `.samples`) via `bcftools --haploid2diploid`, and generating a zero-recombination map — follow as previously described.
 
 ### Haplogroup assignment
 
 Haplogroups for individual reference panel samples were obtained using HaploGrep v3 and PhyloTree v17.0. The resulting composition (see `haplogroups/Reference_panel_haplogroup_composition_donut.png`) is dominated by haplogroups H, L, and M, with broad representation across most major mtDNA haplogroups (A–Z), consistent with a globally diverse panel suited to imputation across multiple mitochondrial lineages.
-
-## Inputs
-
-- `sequence.fasta` — GenBank/MitoMap search results (68,670 sequences)
-- `hsapiensCRS7k.fasta` — MitoImpute reference MSA (7,747 sequences, incl. rCRS)
-
-## Outputs
-
-- `impute2_panel/` — final IMPUTE2-format reference panel + recombination map
-- `haplogroups/` — HaploGrep3/PhyloTree haplogroup calls and composition figure
 
 ## Software
 
