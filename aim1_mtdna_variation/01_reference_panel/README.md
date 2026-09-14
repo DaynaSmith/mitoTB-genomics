@@ -49,33 +49,17 @@ HaploGrep v3 / PhyloTree v17.0 haplogroup assignment
 01_reference_panel/
 ├── README.md
 ├── sequence.fasta                   # Raw downloaded sequences (68,670, GenBank/MitoMap, 18 May 2026)
-├── aligned/
-│   ├── batches/                     # Raw sequences split into 2,500-sequence batches
-│   ├── aligned_batches/             # Each batch aligned to hsapiensCRS7k.fasta via MAFFT --add
-│   ├── full_msa.fasta               # Merged alignment (reference + all newly aligned sequences)
-│   └── full_msa_rcrs_trimmed.fasta  # Insertion columns relative to rCRS removed
 ├── filtered/
-│   ├── filtered_msa.fasta           # Final filtered MSA (58,808 sequences × 16,569 positions)
-│   ├── filter_report.tsv            # Per-sequence ambiguous-base/gap counts and pass/fail status
-│   └── excluded_ids.txt             # Accessions excluded by the quality filter
-├── data/
-│   └── vcf/
-│       └── mtdna_raw.vcf            # Raw VCF output from msa_to_vcf.py
+│   └── filtered_msa.fasta           # Final filtered MSA (58,808 sequences × 16,569 positions)
 ├── impute2_panel/                   # Final QC'd .hap.gz, .legend.gz, .samples + recombination map
 ├── haplogroups/
 │   ├── haplogrep_output.txt         # HaploGrep v3 / PhyloTree v17.0 calls for panel samples
 │   └── Reference_panel_haplogroup_composition_donut.png
-├── scripts/
-│   ├── 01_align.pbs
-│   ├── 02_filter.pbs
-│   ├── 03_msa_to_vcf.pbs
-│   ├── msa_to_vcf.py
-│   ├── 04_vcf_process.pbs           # pending — bcftools norm / invariant-site cleanup
-│   └── 05_vcf_to_impute2.pbs        # pending — IMPUTE2 format + recombination map
-└── logs/
-    ├── 01_align.log
-    ├── 02_filter.log
-    └── 03_msa_to_vcf.log
+└── scripts/
+   ├── 01_align.pbs
+   ├── 02_filter.pbs
+   ├── 03_msa_to_vcf.pbs
+   └── msa_to_vcf.py
 ```
 
 ## Methods
@@ -129,8 +113,6 @@ Haplogroups for individual reference panel samples were obtained using HaploGrep
 
 ## Outputs
 
-- `filtered/filtered_msa.fasta` — filtered MSA (58,808 sequences × 16,569 positions)
-- `data/vcf/mtdna_raw.vcf` — raw VCF
 - `impute2_panel/` — final IMPUTE2-format reference panel + recombination map
 - `haplogroups/` — HaploGrep3/PhyloTree haplogroup calls and composition figure
 
