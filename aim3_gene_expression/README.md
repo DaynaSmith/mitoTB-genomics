@@ -80,9 +80,8 @@ aim3_gene_expression/
 │   │   └── deseq2_L_subgroups_covariate_adjusted.R
 │   │
 │   ├── 07_eqtl_analysis/
-│   │   ├── analysis1_eqtl_clean.R
-│   │   ├── Final_eQTL_pipeline.R
-│   │   └── annotate_v3_hits.R
+│   │   ├── eQTL_pipeline.R
+│   │   └── annotate_eQTL_hits.R
 │   │
 │   ├── 08_coexpression_and_enrichment/
 │   │   ├── nuclear_coexpression.pbs
