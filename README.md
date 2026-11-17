@@ -72,7 +72,7 @@ Each aim-specific directory contains its own README with details on pipeline ste
 
 ## Data Availability
 
-This project uses publicly available mitochondrial genome sequences alongside South African TB case-control genotype, whole-genome sequencing, and RNA-sequencing datasets. Access to controlled datasets is subject to the relevant data access agreements and ethics approvals; details are provided in `docs/`.
+This project uses publicly available mitochondrial genome sequences alongside South African TB case-control genotype, whole-genome sequencing, and RNA-sequencing datasets. Access to controlled datasets is subject to the relevant data access agreements and ethics approvals.
 
 ## Contact
 
