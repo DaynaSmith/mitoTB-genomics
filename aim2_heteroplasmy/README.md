@@ -80,7 +80,7 @@ aim2_heteroplasmy/
 │       ├── composition_chrM_567.csv
 │       ├── composition_chrM_955.csv
 │       └── composition_chrM_16182.csv
-└── figures/                          # Optional curated dissertation figures
+└── figures/
 ```
 
 Some figure scripts expect objects already loaded into an R session, while others contain hardcoded summary counts.
@@ -183,8 +183,6 @@ Scripts in `scripts/supplementary/` and `scripts/figures/` can then be run when 
 - **rCRS** mitochondrial reference sequence, accession **NC_012920.1**.
 - **MITOMAP** human mitochondrial genetic-code documentation and confirmed-pathogenicity data.
 - WGS-derived mitochondrial variant calls produced upstream (the supplied R scripts begin from existing VCFs).
-
-Exact R/package versions are **not recorded in the supplied scripts**. For reproducibility, record `sessionInfo()` or an `renv.lock` file alongside the final analysis.
 
 ## Scope and reproducibility notes
 
