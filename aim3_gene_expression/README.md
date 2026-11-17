@@ -81,6 +81,7 @@ aim3_gene_expression/
 │   │
 │   ├── 07_eqtl_analysis/
 │   │   ├── eQTL_pipeline.R
+│   │   ├── eQTL_pipeline_withSexCovariates.R
 │   │   └── annotate_eQTL_hits.R
 │   │
 │   ├── 08_coexpression_and_enrichment/
@@ -517,7 +518,7 @@ The primary combined workflow is implemented in `analysis1_eqtl_clean.R`.
 
 ### 7.1 Primary combined eQTL workflow
 
-**Script:** `analysis1_eqtl_clean.R`
+**Script:** `eQTL_pipeline.R`
 
 This script implements mitochondrial and nuclear eQTL analyses using Matrix eQTL, with separate PE and SE analyses.
 
@@ -600,7 +601,7 @@ These deviations are important when comparing results across studies.
 
 ### 7.2 Nuclear eQTL refinement
 
-**Script:** `Final_eQTL_pipeline.R`
+**Script:** `eQTL_pipeline_withSexCovariates.R`
 
 Implements a separate nuclear eQTL workflow incorporating stringent nuclear genotype QC, NUMT-related exclusions, sex covariates, genetic principal components, discovery–replication comparisons and mitochondrial haplogroup sensitivity analyses.
 
@@ -610,7 +611,7 @@ It should therefore be documented as a complementary nuclear eQTL analysis rathe
 
 ### 7.3 Annotation of replicating eQTL associations
 
-**Script:** `annotate_v3_hits.R`
+**Script:** `annotate_eQTL_hits.R`
 
 Annotates genotype–expression associations identified in the combined eQTL workflow.
 
