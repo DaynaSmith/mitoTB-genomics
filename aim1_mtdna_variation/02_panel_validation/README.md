@@ -43,7 +43,7 @@ Imputed mtDNA VCFs (after relevant QC / INFO filtering)        │
 
 ## Directory contents
 
-Suggested repository layout (the input VCFs, haplogroup CSVs and generated results are **not** included in the uploaded scripts):
+Suggested repository layout (the input VCFs, haplogroup CSVs and generated results are **not** included):
 
 ```text
 02_panel_validation/
@@ -51,11 +51,7 @@ Suggested repository layout (the input VCFs, haplogroup CSVs and generated resul
 ├── scripts/
 │   ├── mtDNA_imputation_concordance.R     # Primary untyped-mtSNP genotype validation
 │   ├── strict_haplogroup_concordance.R    # Primary exact and hierarchical haplogroup validation
-│   ├── venn_diagrams_updated.R           # Variant recovery visualisation
-│   └── legacy/
-│       ├── CalculateMCC_GenotypeConcordance.R
-│       ├── HaplogroupConcordance.R
-│       └── GenotypeConcordance_VennDiagrams.R
+│   └──  venn_diagrams_updated.R           # Variant recovery visualisation
 ├── resources/
 │   └── phylotree17_parents.csv           # Haplogroup-parent relationships (Build 17)
 ├── input/                                # User-provided VCFs and haplogroup/count CSVs
@@ -184,8 +180,6 @@ These are **related versions, not byte-for-byte duplicates**. The preferred scri
 - **Recovery is not genotype accuracy:** a recovered variant can have poor genotype concordance, and MCC may be undefined at sites lacking variation in the evaluated samples.
 - **Position exclusion precedes allele matching:** excluding all originally typed positions prevents directly observed array sites from inflating imputation accuracy; matching `POS_REF_ALT` subsequently avoids counting mismatched alternate alleles as recovered.
 - **Phylogenetic concordance complements exact concordance:** related but nonidentical haplogroups can have meaningful shared ancestry; strict label matching prevents artificial improvement through forced truncation.
-- **Dataset-specific settings matter:** paths, QC thresholds, sample subsets and cohort/platform labels must be checked before running. The scripts alone do not establish final validation results or platform-specific sample counts.
-- **Not executed as part of this documentation:** the README describes the uploaded code; the analyses and generated result files have not been independently rerun or verified here.
 
 ## References
 
