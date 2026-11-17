@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N nuclear_coexpression
+#PBS -l walltime=02:00:00
+#PBS -l select=1:ncpus=4:mem=32gb
+
+# =============================================================================
+# Genome-wide nuclear co-expression analysis (45_nuclear_coexpression.R),
+# run on the HPC given the memory/compute demands of normalizing a
+# genome-wide count matrix + ~740,000 correlations.
+#
+# Submit with:  qsub nuclear_coexpression.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/R/4.6.0
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+exec > logs/nuclear_coexpression.run.log 2>&1
+
+echo "Started at $(date)"
+
+Rscript nuclear_coexpression.R
+
+echo "Done at $(date)"
+
