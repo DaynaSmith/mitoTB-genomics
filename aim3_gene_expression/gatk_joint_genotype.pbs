@@ -1,0 +1,94 @@
+#!/bin/bash
+#PBS -N gatk_joint_genotype
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=8:mem=32gb
+
+# =============================================================================
+# Joint genotyping across all sample GVCFs:
+#   GenomicsDBImport (combine per-sample GVCFs into one database)
+#   -> GenotypeGVCFs (joint-call genotypes at every site for every sample)
+#   -> VariantFiltration (same hard filters as before, applied to the joint VCF)
+#
+# Run this AFTER gatk_gvcf_call.pbs has completed for all samples.
+#
+# Submit with:  qsub gatk_joint_genotype.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/gatk/4.4.0.0
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+exec > logs/joint_genotype.run.log 2>&1
+
+# ---- EDIT THESE PATHS ----
+SAMPLE_LIST="ok_samples.txt"
+OUTDIR="gatk_out"
+REF_FASTA="star_index_grch38/GRCh38.primary_assembly.genome.fa"
+TARGET_BED="mito_nuclear_genes.bed"
+GENOMICSDB_PATH="gatk_genomicsdb"
+JOINT_VCF="joint_genotyped.vcf.gz"
+JOINT_FILTERED_VCF="joint_genotyped.filtered.vcf.gz"
+SAMPLE_MAP="gvcf_sample_map.txt"
+# ---------------------------
+
+echo "Started at $(date)"
+
+# ---- 1. Build the sample-name-map GenomicsDBImport needs: sample_id<TAB>gvcf_path ----
+> "$SAMPLE_MAP"
+while read -r SAMPLE; do
+    GVCF="$OUTDIR/$SAMPLE/${SAMPLE}.g.vcf.gz"
+    if [[ ! -f "$GVCF" ]]; then
+        echo "WARNING: missing GVCF for $SAMPLE at $GVCF — excluding from joint call" >&2
+        continue
+    fi
+    echo -e "${SAMPLE}\t${GVCF}" >> "$SAMPLE_MAP"
+done < "$SAMPLE_LIST"
+
+N_SAMPLES=$(wc -l < "$SAMPLE_MAP")
+echo "Sample map built with $N_SAMPLES samples"
+
+echo "Starting GenomicsDBImport at $(date)"
+
+# ---- 2. GenomicsDBImport ----
+# --merge-input-intervals: merges nearby/overlapping intervals before
+#   processing — your 1,123-gene BED has many small, non-contiguous
+#   intervals, which is a known GenomicsDBImport performance bottleneck.
+# --batch-size 50: processes samples in batches rather than all 507 at
+#   once, trading a little speed for much lower per-interval overhead —
+#   GATK's own docs recommend this for large cohorts.
+rm -rf "$GENOMICSDB_PATH"   # must not already exist
+gatk GenomicsDBImport \
+    --sample-name-map "$SAMPLE_MAP" \
+    --genomicsdb-workspace-path "$GENOMICSDB_PATH" \
+    -L "$TARGET_BED" \
+    --merge-input-intervals \
+    --batch-size 50
+
+echo "GenomicsDBImport finished at $(date)"
+echo "Starting GenotypeGVCFs at $(date)"
+
+# ---- 3. GenotypeGVCFs — joint genotyping across all samples ----
+gatk GenotypeGVCFs \
+    -R "$REF_FASTA" \
+    -V "gendb://$GENOMICSDB_PATH" \
+    -O "$JOINT_VCF"
+
+echo "GenotypeGVCFs finished at $(date)"
+echo "Starting VariantFiltration at $(date)"
+
+# ---- 4. Hard filtering (same thresholds as the per-sample run) ----
+gatk VariantFiltration \
+    -R "$REF_FASTA" \
+    -V "$JOINT_VCF" \
+    -window 35 -cluster 3 \
+    --filter-name FS -filter "FS > 30.0" \
+    --filter-name QD -filter "QD < 2.0" \
+    -O "$JOINT_FILTERED_VCF"
+
+echo "Done at $(date)"
+echo "Final joint VCF: $JOINT_FILTERED_VCF"
+zcat "$JOINT_FILTERED_VCF" | grep -v "^##" | head -3
+

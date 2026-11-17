@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N extract_ndna_genotypes
+#PBS -l walltime=00:20:00
+#PBS -l select=1:ncpus=2:mem=4gb
+
+# =============================================================================
+# Extract nDNA genotypes from the joint VCF as a numeric 0/1/2 dosage matrix
+# (SNPs x samples) for Matrix eQTL.
+#
+# Submit with:  qsub extract_ndna_genotypes.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/bcftools    # EDIT: confirm exact module name
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+exec > logs/extract_ndna_genotypes.run.log 2>&1
+
+echo "Started at $(date)"
+
+# ---- EDIT THESE PATHS ----
+INPUT_VCF="joint_genotyped.filtered.no_rnaedit.dedup.nuclear_only.vcf.gz"
+OUT_MATRIX="ndna_genotype_matrix.tsv"
+OUT_SNP_POS="ndna_snp_positions.tsv"
+# ---------------------------
+
+# Header row: snp_id + sample names
+echo -e "id\t$(bcftools query -l "$INPUT_VCF" | tr '\n' '\t' | sed 's/\t$//')" > "$OUT_MATRIX"
+
+# Genotypes coded as dosage of the alt allele: 0=hom-ref, 1=het, 2=hom-alt, NA=missing
+# ID includes REF/ALT (not just CHROM_POS) to stay unique at multiallelic sites,
+# which are otherwise represented as separate records sharing the same position.
+bcftools query -f '%CHROM\_%POS\_%REF\_%ALT\t[%GT\t]\n' "$INPUT_VCF" \
+    | sed -e 's/0\/0/0/g' -e 's/0|0/0/g' \
+          -e 's/0\/1/1/g' -e 's/0|1/1/g' -e 's/1\/0/1/g' -e 's/1|0/1/g' \
+          -e 's/1\/1/2/g' -e 's/1|1/2/g' \
+          -e 's/\.\/\./NA/g' -e 's/\.|\./NA/g' -e 's/\./NA/g' \
+    | sed 's/\t$//' >> "$OUT_MATRIX"
+
+# Also write out SNP positions (needed for Matrix eQTL's snpspos file)
+bcftools query -f '%CHROM\_%POS\_%REF\_%ALT\t%CHROM\t%POS\n' "$INPUT_VCF" > "$OUT_SNP_POS"
+sed -i '1i id\tchr\tpos' "$OUT_SNP_POS"
+
+N_SNPS=$(($(wc -l < "$OUT_MATRIX") - 1))
+N_DISTINCT_IDS=$(tail -n +2 "$OUT_MATRIX" | cut -f1 | sort -u | wc -l)
+N_SAMPLES=$(bcftools query -l "$INPUT_VCF" | wc -l)
+echo "Wrote $N_SNPS SNPs x $N_SAMPLES samples to $OUT_MATRIX"
+echo "Distinct IDs: $N_DISTINCT_IDS (should equal $N_SNPS -- if not, IDs are still colliding)"
+echo "Done at $(date)"
+

@@ -1,0 +1,69 @@
+#!/bin/bash
+#PBS -N gatk_merge_filter
+#PBS -l walltime=01:00:00
+#PBS -l select=1:ncpus=2:mem=8gb
+
+# =============================================================================
+# Merge the 20 chunked GenotypeGVCFs outputs into one joint VCF, then apply
+# the same hard filtering as the original (non-chunked) pipeline.
+#
+# Run AFTER gatk_genotype_parallel.pbs has completed all chunks.
+#
+# Submit with:  qsub merge_and_filter.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/gatk/4.4.0.0
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+REF_FASTA="star_index_grch38/GRCh38.primary_assembly.genome.fa"
+CHUNKS_DIR="gatk_out_chunks"
+JOINT_VCF="joint_genotyped.vcf.gz"
+JOINT_FILTERED_VCF="joint_genotyped.filtered.vcf.gz"
+N_CHUNKS=20
+# ---------------------------
+
+mkdir -p logs
+exec > logs/merge_filter.run.log 2>&1
+
+echo "Started at $(date)"
+
+# ---- Confirm all chunks completed before merging ----
+MISSING=0
+INPUT_ARGS=""
+for i in $(seq 1 "$N_CHUNKS"); do
+    VCF="$CHUNKS_DIR/chunk_${i}.vcf.gz"
+    if [[ ! -f "$VCF" ]]; then
+        echo "WARNING: missing $VCF" >&2
+        MISSING=$((MISSING+1))
+    else
+        INPUT_ARGS="$INPUT_ARGS -I $VCF"
+    fi
+done
+
+if [[ "$MISSING" -gt 0 ]]; then
+    echo "ERROR: $MISSING chunk(s) missing — check 25b array job completed fully before merging" >&2
+    exit 1
+fi
+
+echo "All $N_CHUNKS chunks present. Merging..."
+
+gatk MergeVcfs $INPUT_ARGS -O "$JOINT_VCF"
+
+echo "Merge complete at $(date). Applying hard filters..."
+
+gatk VariantFiltration \
+    -R "$REF_FASTA" \
+    -V "$JOINT_VCF" \
+    -window 35 -cluster 3 \
+    --filter-name FS -filter "FS > 30.0" \
+    --filter-name QD -filter "QD < 2.0" \
+    -O "$JOINT_FILTERED_VCF"
+
+echo "Done at $(date)"
+echo "Final joint VCF: $JOINT_FILTERED_VCF"
+zcat "$JOINT_FILTERED_VCF" | grep -v "^##" | head -1 | tr '\t' '\n' | wc -l
+

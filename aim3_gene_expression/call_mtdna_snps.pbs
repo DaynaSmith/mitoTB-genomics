@@ -1,0 +1,97 @@
+#!/bin/bash
+#PBS -N call_mtdna_snps
+#PBS -l walltime=00:20:00
+#PBS -l select=1:ncpus=2:mem=4gb
+#PBS -J 1-520
+
+# =============================================================================
+# Call mtDNA SNPs per sample: align each MITGARD-reconstructed personalized
+# mitogenome against rCRS with minimap2 (asm10 preset -- appropriate for
+# closely related genomes, ~<10% divergence, comfortably covers mtDNA
+# haplogroup divergence from rCRS), then call variants with
+# bcftools mpileup/call using --ploidy 1 (mtDNA is haploid).
+#
+# This produces the per-position mtDNA "genotype" data for the eQTL,
+# matching the paper's SNP-level approach rather than using haplogroup
+# as a coarse proxy.
+#
+# NOTE: uses minimap2 from mitgard_env (conda) and samtools/bcftools from
+# HPC modules -- load conda FIRST, modules LAST, to avoid the PATH-shadowing
+# issue we hit earlier in this project (a stray conda samtools/bcftools
+# winning over the module version).
+#
+# Submit with:  qsub call_mtdna_snps.pbs
+# =============================================================================
+
+set -euo pipefail
+
+source /new-apps/miniconda3/bin/activate mitgard_env   # for minimap2
+module add app/samtools/1.20
+module add app/bcftools/1.19
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+MANIFEST="fastq_manifest.txt"        # sample_id  R1  R2  library_type -- just need sample_id here
+MITGARD_OUT="mitgard_out"
+REF_FASTA="rCRS.fasta"
+OUTDIR="mtdna_snp_calls"
+# ---------------------------
+
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX -- check $MANIFEST line count" >&2
+    exit 1
+fi
+
+SAMPLE_OUT="$OUTDIR/$SAMPLE"
+mkdir -p "$SAMPLE_OUT"
+exec > "$SAMPLE_OUT/${SAMPLE}.snpcall.log" 2>&1
+
+echo "Processing: $SAMPLE"
+echo "Started at $(date)"
+
+MITOGENOME="$MITGARD_OUT/$SAMPLE/${SAMPLE}_mitogenome.fa"
+if [[ ! -f "$MITOGENOME" ]]; then
+    echo "ERROR: no MITGARD mitogenome found at $MITOGENOME" >&2
+    exit 1
+fi
+
+# ---- 1. Align personalized mitogenome to rCRS ----
+minimap2 -ax asm10 "$REF_FASTA" "$MITOGENOME" > "$SAMPLE_OUT/${SAMPLE}.sam"
+samtools sort -o "$SAMPLE_OUT/${SAMPLE}.sorted.bam" "$SAMPLE_OUT/${SAMPLE}.sam"
+samtools index "$SAMPLE_OUT/${SAMPLE}.sorted.bam"
+
+# ---- 2. Call variants (haploid) ----
+# NOTE: -m (not -mv) -- calling ALL sites, not just variant sites, so
+# samples matching rCRS get an explicit "0" (reference) call instead of
+# being silently absent. The earlier -mv (variants-only) approach meant
+# every sample's VCF only ever listed positions where THEY personally
+# differed from rCRS -- after merging across 520 samples, this made almost
+# every position's "0" (reference) genotypes look like missing data instead
+# of real, informative calls, which is what was causing the MAC filter to
+# find almost nothing passing.
+bcftools mpileup -f "$REF_FASTA" "$SAMPLE_OUT/${SAMPLE}.sorted.bam" 2>/dev/null \
+    | bcftools call --ploidy 1 -m -Oz -o "$SAMPLE_OUT/${SAMPLE}.mtdna.vcf.gz"
+tabix -p vcf "$SAMPLE_OUT/${SAMPLE}.mtdna.vcf.gz"
+
+# Rename the sample in the VCF header to match our actual sample ID
+# (minimap2/samtools will have used the mitogenome FASTA header or BAM
+# filename by default, not necessarily our sample_id)
+echo "$SAMPLE" > "$SAMPLE_OUT/${SAMPLE}.rename_sample.txt"
+bcftools reheader -s "$SAMPLE_OUT/${SAMPLE}.rename_sample.txt" \
+    -o "$SAMPLE_OUT/${SAMPLE}.mtdna.renamed.vcf.gz" \
+    "$SAMPLE_OUT/${SAMPLE}.mtdna.vcf.gz"
+mv "$SAMPLE_OUT/${SAMPLE}.mtdna.renamed.vcf.gz" "$SAMPLE_OUT/${SAMPLE}.mtdna.vcf.gz"
+tabix -f -p vcf "$SAMPLE_OUT/${SAMPLE}.mtdna.vcf.gz"
+
+N_VARIANTS=$(zcat "$SAMPLE_OUT/${SAMPLE}.mtdna.vcf.gz" | grep -vc "^#")
+echo "Variants called: $N_VARIANTS"
+
+# ---- Clean up large intermediates ----
+rm -f "$SAMPLE_OUT/${SAMPLE}.sam" "$SAMPLE_OUT/${SAMPLE}.sorted.bam" "$SAMPLE_OUT/${SAMPLE}.sorted.bam.bai"
+
+echo "Done: $SAMPLE at $(date)"
+

@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -N dedup_ndna_vcf
+#PBS -l walltime=00:20:00
+#PBS -l select=1:ncpus=2:mem=4gb
+
+# =============================================================================
+# Remove exact duplicate VCF records from the joint nDNA VCF -- likely caused
+# by overlapping gene intervals across the 20 parallel GenotypeGVCFs chunks
+# (gatk MergeVcfs concatenates rather than deduplicates).
+#
+# Submit with:  qsub dedup_ndna_vcf.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/bcftools/1.19
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+exec > logs/dedup_ndna_vcf.run.log 2>&1
+
+echo "Started at $(date)"
+
+# ---- EDIT THESE PATHS ----
+INPUT_VCF="joint_genotyped.filtered.no_rnaedit.vcf.gz"
+OUTPUT_VCF="joint_genotyped.filtered.no_rnaedit.dedup.vcf.gz"
+# ---------------------------
+
+N_BEFORE=$(zcat "$INPUT_VCF" | grep -vc "^#")
+
+bcftools norm -d exact "$INPUT_VCF" -Oz -o "$OUTPUT_VCF"
+tabix -p vcf "$OUTPUT_VCF"
+
+N_AFTER=$(zcat "$OUTPUT_VCF" | grep -vc "^#")
+
+echo "Variants before dedup: $N_BEFORE"
+echo "Variants after dedup:  $N_AFTER"
+echo "Removed as exact duplicates: $((N_BEFORE - N_AFTER))"
+echo "Done at $(date)"
+echo "Deduplicated VCF: $OUTPUT_VCF"
+

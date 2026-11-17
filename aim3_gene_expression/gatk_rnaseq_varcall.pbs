@@ -1,0 +1,113 @@
+#!/bin/bash
+#PBS -N gatk_rnaseq_varcall
+#PBS -o logs/gatk.out
+#PBS -e logs/gatk.err
+#PBS -l walltime=01:00:00
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -J 1-518
+
+# =============================================================================
+# GATK RNA-seq short variant discovery, per sample, on the nuclear genome.
+# Follows GATK's RNAseq Best Practices: MarkDuplicates -> SplitNCigarReads ->
+# HaplotypeCaller -> VariantFiltration (hard filters recommended for RNA-seq).
+#
+# Uses your ORIGINAL whole-genome STAR BAMs (aligned_PE/aligned_SE), not the
+# MITGARD/chrM-specific output — this is the nuclear-genotype track.
+#
+# NOTE: -L target_bed restricts calling to the MitoCarta3.0 nuclear
+# mitochondrial gene set once you've built it (17_make_mito_target_bed.py).
+# Until that BED exists, this script will fail at the -L step — build the
+# BED first, or comment out the -L lines to run genome-wide (much slower,
+# not recommended given your candidate-gene design).
+#
+# NOTE: set -J above to match your bam_manifest.txt line count.
+#
+# Submit with:  qsub gatk_rnaseq_varcall.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/gatk/4.4.0.0
+module add app/samtools/1.20      # EDIT: confirm still needed/available under this name
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+MANIFEST="bam_manifest.txt"           # sample_id  bam_path  library_type
+OUTDIR="gatk_out"
+REF_FASTA="star_index_grch38/GRCh38.primary_assembly.genome.fa"   # same reference used for STAR
+TARGET_BED="mito_nuclear_genes.bed"             # from 17_make_mito_target_bed.py
+THREADS=4
+# ---------------------------
+
+mkdir -p "$OUTDIR" logs
+
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+BAM=$(echo "$LINE" | cut -f2)
+LIBTYPE=$(echo "$LINE" | cut -f3)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check $MANIFEST line count" >&2
+    exit 1
+fi
+
+echo "Processing: $SAMPLE ($LIBTYPE)"
+
+SAMPLE_OUT="$OUTDIR/$SAMPLE"
+mkdir -p "$SAMPLE_OUT"
+
+# ---- 0. Subset to target gene regions FIRST, before any heavy GATK steps.
+#         This is a whole-transcriptome BAM (tens of millions of reads) — we
+#         only need the ~1,123 MitoCarta genes, so restricting now avoids
+#         running MarkDuplicates/SplitNCigarReads on data we'll discard anyway.
+samtools view -b -L "$TARGET_BED" "$BAM" > "$SAMPLE_OUT/${SAMPLE}.target_subset.bam"
+samtools index "$SAMPLE_OUT/${SAMPLE}.target_subset.bam"
+
+# ---- 1. MarkDuplicates ----
+gatk MarkDuplicates \
+    -I "$SAMPLE_OUT/${SAMPLE}.target_subset.bam" \
+    -O "$SAMPLE_OUT/${SAMPLE}.dedup.bam" \
+    -M "$SAMPLE_OUT/${SAMPLE}.dedup_metrics.txt"
+
+# ---- 2. Add read group info (often required by downstream GATK tools if
+#         not already set correctly by STAR — adjust/remove if your BAMs
+#         already carry valid @RG tags) ----
+gatk AddOrReplaceReadGroups \
+    -I "$SAMPLE_OUT/${SAMPLE}.dedup.bam" \
+    -O "$SAMPLE_OUT/${SAMPLE}.rg.bam" \
+    -RGID "$SAMPLE" -RGLB "$LIBTYPE" -RGPL illumina -RGPU unit1 -RGSM "$SAMPLE"
+
+samtools index "$SAMPLE_OUT/${SAMPLE}.rg.bam"
+
+# ---- 3. SplitNCigarReads (RNA-seq specific — splits spliced reads at N
+#         cigar elements so they don't get treated as one long deletion) ----
+gatk SplitNCigarReads \
+    -R "$REF_FASTA" \
+    -I "$SAMPLE_OUT/${SAMPLE}.rg.bam" \
+    -O "$SAMPLE_OUT/${SAMPLE}.split.bam"
+
+# ---- 4. HaplotypeCaller, restricted to target gene set ----
+gatk HaplotypeCaller \
+    -R "$REF_FASTA" \
+    -I "$SAMPLE_OUT/${SAMPLE}.split.bam" \
+    -L "$TARGET_BED" \
+    --dont-use-soft-clipped-bases \
+    -stand-call-conf 20.0 \
+    -O "$SAMPLE_OUT/${SAMPLE}.raw.vcf.gz"
+
+# ---- 5. Hard filtering (GATK's recommended RNA-seq defaults) ----
+gatk VariantFiltration \
+    -R "$REF_FASTA" \
+    -V "$SAMPLE_OUT/${SAMPLE}.raw.vcf.gz" \
+    -window 35 -cluster 3 \
+    --filter-name FS -filter "FS > 30.0" \
+    --filter-name QD -filter "QD < 2.0" \
+    -O "$SAMPLE_OUT/${SAMPLE}.filtered.vcf.gz"
+
+# Clean up large intermediates (comment out if you want to keep them)
+rm -f "$SAMPLE_OUT/${SAMPLE}.target_subset.bam" "$SAMPLE_OUT/${SAMPLE}.target_subset.bam.bai" \
+      "$SAMPLE_OUT/${SAMPLE}.dedup.bam" "$SAMPLE_OUT/${SAMPLE}.rg.bam" "$SAMPLE_OUT/${SAMPLE}.rg.bam.bai"
+
+echo "Done: $SAMPLE"
+

@@ -1,0 +1,52 @@
+#!/bin/bash
+#PBS -N gatk_genotype_parallel
+#PBS -l walltime=06:00:00
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -J 1-20
+
+# =============================================================================
+# Parallel GenotypeGVCFs, split by BED chunk, reusing the existing
+# gatk_genomicsdb workspace (does NOT redo the 14+ hour GenomicsDBImport
+# step). Each array task genotypes only its own chunk of the target genes,
+# with an explicit -L this time (fixes a missing scoping flag from the
+# previous serial run).
+#
+# Run split_bed_for_genotyping.py first to create bed_chunks/.
+#
+# Submit with:  qsub gatk_genotype_parallel.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/gatk/4.4.0.0
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+REF_FASTA="star_index_grch38/GRCh38.primary_assembly.genome.fa"
+GENOMICSDB_PATH="gatk_genomicsdb"
+BED_CHUNKS_DIR="bed_chunks"
+OUTDIR="gatk_out_chunks"
+# ---------------------------
+
+mkdir -p "$OUTDIR" logs
+
+CHUNK_BED=$(printf "%s/chunk_%02d.bed" "$BED_CHUNKS_DIR" "$PBS_ARRAY_INDEX")
+
+if [[ ! -f "$CHUNK_BED" ]]; then
+    echo "No chunk file found at $CHUNK_BED — check bed_chunks/ contents and -J range" >&2
+    exit 1
+fi
+
+exec > "$OUTDIR/chunk_${PBS_ARRAY_INDEX}.log" 2>&1
+
+echo "Genotyping chunk $PBS_ARRAY_INDEX ($CHUNK_BED) at $(date)"
+
+gatk GenotypeGVCFs \
+    -R "$REF_FASTA" \
+    -V "gendb://$GENOMICSDB_PATH" \
+    -L "$CHUNK_BED" \
+    -O "$OUTDIR/chunk_${PBS_ARRAY_INDEX}.vcf.gz"
+
+echo "Done chunk $PBS_ARRAY_INDEX at $(date)"
+

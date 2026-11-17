@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -N remove_chrm_from_ndna
+#PBS -l walltime=00:15:00
+#PBS -l select=1:ncpus=2:mem=4gb
+
+# =============================================================================
+# Remove chrM records that leaked into the "nDNA" VCF -- mito_nuclear_genes.bed
+# was never explicitly filtered to exclude chrM, and MitoCarta3.0's gene list
+# includes the mtDNA-encoded genes themselves alongside true nuclear-encoded
+# mitochondrial genes. This meant every step of the nuclear pipeline
+# (GATK calling, joint genotyping, RNA-editing filtering) included chrM.
+#
+# Submit with:  qsub remove_chrm_from_ndna.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/bcftools    # EDIT: confirm exact module name
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+exec > logs/remove_chrm_from_ndna.run.log 2>&1
+
+echo "Started at $(date)"
+
+# ---- EDIT THESE PATHS ----
+INPUT_VCF="joint_genotyped.filtered.no_rnaedit.dedup.vcf.gz"
+OUTPUT_VCF="joint_genotyped.filtered.no_rnaedit.dedup.nuclear_only.vcf.gz"
+# ---------------------------
+
+N_BEFORE=$(zcat "$INPUT_VCF" | grep -vc "^#")
+N_CHRM=$(zcat "$INPUT_VCF" | grep -v "^#" | awk '$1=="chrM"' | wc -l)
+
+bcftools view -t ^chrM "$INPUT_VCF" -Oz -o "$OUTPUT_VCF"
+tabix -p vcf "$OUTPUT_VCF"
+
+N_AFTER=$(zcat "$OUTPUT_VCF" | grep -vc "^#")
+
+echo "Variants before: $N_BEFORE"
+echo "chrM variants found: $N_CHRM"
+echo "Variants after removing chrM: $N_AFTER"
+echo "Done at $(date)"
+echo "Nuclear-only VCF: $OUTPUT_VCF"
+

@@ -1,0 +1,59 @@
+#!/bin/bash
+#PBS -N extract_mtdna_genotypes
+#PBS -l walltime=00:10:00
+#PBS -l select=1:ncpus=2:mem=4gb
+
+# =============================================================================
+# Extract mtDNA genotypes from the joint mtDNA VCF as a numeric 0/1 dosage
+# matrix (mtDNA is haploid -- no heterozygous state) for Matrix eQTL.
+#
+# Submit with:  qsub extract_mtdna_genotypes.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/bcftools    # EDIT: confirm exact module name
+
+cd "$PBS_O_WORKDIR"
+
+mkdir -p logs
+exec > logs/extract_mtdna_genotypes.run.log 2>&1
+
+echo "Started at $(date)"
+
+# ---- EDIT THESE PATHS ----
+INPUT_VCF="mtdna_joint_genotyped.vcf.gz"
+OUT_MATRIX="mtdna_genotype_matrix.tsv"
+OUT_SNP_POS="mtdna_snp_positions.tsv"
+# ---------------------------
+
+echo -e "id\t$(bcftools query -l "$INPUT_VCF" | tr '\n' '\t' | sed 's/\t$//')" > "$OUT_MATRIX"
+
+# Haploid genotypes: 0 = ref allele, 1 = alt allele, NA = missing
+# ID includes REF/ALT (not just CHROM_POS) to stay unique at multiallelic sites.
+# IMPORTANT: only the genotype (%GT) columns get the "." -> "NA" substitution
+# here -- NOT the whole line -- because rCRS's CHROM name (NC_012920.1) has a
+# literal "." that a whole-line sed would corrupt into "NA1".
+bcftools query -f '%CHROM\_%POS\_%REF\_%ALT\t[%GT\t]\n' "$INPUT_VCF" \
+    | awk -F'\t' 'BEGIN{OFS="\t"} {
+        id=$1;
+        printf "%s", id;
+        for(i=2; i<=NF; i++) {
+            val=$i;
+            gsub(/\./, "NA", val);
+            printf "\t%s", val;
+        }
+        printf "\n";
+    }' \
+    | sed 's/\t$//' >> "$OUT_MATRIX"
+
+bcftools query -f '%CHROM\_%POS\_%REF\_%ALT\t%CHROM\t%POS\n' "$INPUT_VCF" > "$OUT_SNP_POS"
+sed -i '1i id\tchr\tpos' "$OUT_SNP_POS"
+
+N_SNPS=$(($(wc -l < "$OUT_MATRIX") - 1))
+N_DISTINCT_IDS=$(tail -n +2 "$OUT_MATRIX" | cut -f1 | sort -u | wc -l)
+N_SAMPLES=$(bcftools query -l "$INPUT_VCF" | wc -l)
+echo "Wrote $N_SNPS mtDNA SNPs x $N_SAMPLES samples to $OUT_MATRIX"
+echo "Distinct IDs: $N_DISTINCT_IDS (should equal $N_SNPS -- if not, IDs are still colliding)"
+echo "Done at $(date)"
+

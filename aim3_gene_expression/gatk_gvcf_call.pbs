@@ -1,0 +1,64 @@
+#!/bin/bash
+#PBS -N gatk_gvcf_call
+#PBS -l walltime=01:30:00
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -J 1-507
+
+# =============================================================================
+# Rerun HaplotypeCaller in GVCF mode (-ERC GVCF), reusing the existing
+# split.bam files from the earlier run — no need to redo MarkDuplicates/
+# AddOrReplaceReadGroups/SplitNCigarReads.
+#
+# Uses ok_samples.txt (built from gatk_qc_summary.tsv, status=OK) so the
+# 4 previously-failed samples are automatically excluded.
+#
+# NOTE: set -J above to match the number of lines in ok_samples.txt.
+#
+# Submit with:  qsub gatk_gvcf_call.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/gatk/4.4.0.0
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+SAMPLE_LIST="ok_samples.txt"     # one sample_id per line — built from gatk_qc_summary.tsv
+OUTDIR="gatk_out"
+REF_FASTA="star_index_grch38/GRCh38.primary_assembly.genome.fa"
+TARGET_BED="mito_nuclear_genes.bed"
+# ---------------------------
+
+SAMPLE=$(sed -n "${PBS_ARRAY_INDEX}p" "$SAMPLE_LIST")
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check $SAMPLE_LIST line count" >&2
+    exit 1
+fi
+
+SAMPLE_OUT="$OUTDIR/$SAMPLE"
+
+# Manual log redirection — this cluster's PBS log staging is unreliable.
+exec > "$SAMPLE_OUT/${SAMPLE}.gvcf.run.log" 2>&1
+
+echo "Processing: $SAMPLE"
+echo "Started at $(date)"
+
+SPLIT_BAM="$SAMPLE_OUT/${SAMPLE}.split.bam"
+if [[ ! -f "$SPLIT_BAM" ]]; then
+    echo "ERROR: expected split.bam not found at $SPLIT_BAM" >&2
+    exit 1
+fi
+
+gatk HaplotypeCaller \
+    -R "$REF_FASTA" \
+    -I "$SPLIT_BAM" \
+    -L "$TARGET_BED" \
+    --dont-use-soft-clipped-bases \
+    -stand-call-conf 20.0 \
+    -ERC GVCF \
+    -O "$SAMPLE_OUT/${SAMPLE}.g.vcf.gz"
+
+echo "Done: $SAMPLE at $(date)"
+
