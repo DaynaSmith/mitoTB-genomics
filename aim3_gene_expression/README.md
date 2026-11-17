@@ -94,11 +94,10 @@ aim3_gene_expression/
 │   └── 09_sensitivity_and_validation/
 │       └── mtDNA_genomewide_normalisation_sensitivity.R
 │
-├── resources/
-│   ├── chrM_genes.gtf
-│   └── mito_nuclear_genes.bed
-│
-└── figures/
+└── resources/
+    ├── chrM_genes.gtf
+    └── mito_nuclear_genes.bed
+
 ```
 
 ---
