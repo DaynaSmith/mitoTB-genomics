@@ -44,15 +44,10 @@ To investigate mitochondrial gene expression in relation to TB status and mitoch
 .
 ├── aim1_mtdna_variation/          # Imputation panel development, miWAS, haplogroup association
 ├── aim2_heteroplasmy/             # Heteroplasmy detection, burden analysis, sequence context
-├── aim3_gene_expression/          # RNA-seq processing, differential expression, pathway analysis
-├── data/                          # Raw data pointers / metadata (no controlled-access data committed)
-├── docs/                          # Supplementary documentation, notes, protocols
-├── envs/                          # Conda/renv/environment specification files
-├── scripts/                       # Shared utility scripts
-└── results/                       # Summary outputs, figures, tables (non-sensitive only)
+└── aim3_gene_expression/          # RNA-seq processing, differential expression, pathway analysis
 ```
 
-*Note: Controlled-access genotype, sequencing, and clinical data are not stored in this repository; only code, intermediate/derived non-identifiable files, and documentation are included.*
+*Note: Controlled-access genotype, sequencing, and clinical data are not stored in this repository; only code, reference files, and documentation are included.*
 
 ## Requirements
 
@@ -68,7 +63,7 @@ Software and package dependencies for each analysis module are listed in the `en
 
 ## Usage
 
-Each aim-specific directory contains its own README with details on pipeline steps, input/output file formats, and how to reproduce individual analyses. Start with the top-level workflow diagram (to be added) for an overview of how the modules connect.
+Each aim-specific directory contains its own README with details on pipeline steps, input/output file formats, and how to reproduce individual analyses.
 
 ## Data Availability
 
