@@ -223,14 +223,6 @@ Implements personalised mitochondrial read remapping using sample-specific mitoc
 
 Personalised remapping accounts for differences between individual mitochondrial sequences and the reference genome and provides inputs for mitochondrial expression quantification.
 
-### `extract_personalised_MT-RNR2.py`
-
-Performs a targeted validation analysis of the mitochondrial ribosomal RNA gene MT-RNR2.
-
-The script aligns personalised mitochondrial sequences against the revised Cambridge Reference Sequence (rCRS) and extracts the region corresponding to positions 1671–3229.
-
-This analysis is supplementary and is not a required upstream dependency for all expression models.
-
 ---
 
 ## 3. Variant calling and genotype preparation
