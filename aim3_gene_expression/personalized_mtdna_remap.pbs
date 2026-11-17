@@ -1,0 +1,146 @@
+#!/bin/bash
+#PBS -N personalized_mtdna_remap
+#PBS -l walltime=00:30:00
+#PBS -l select=1:ncpus=4:mem=4gb
+#PBS -J 1-520%50
+
+# =============================================================================
+# Personalized mtDNA remapping (lightweight approach — see conversation
+# notes): builds a tiny chrM-only STAR index from each sample's MITGARD
+# reconstructed mitogenome, remaps just that sample's mtDNA-derived reads
+# against it, and quantifies the 37 mtDNA genes.
+#
+# Two passes, matching the paper's approach:
+#   MAIN pass:  --outFilterMismatchNmax 8  (all 37 genes)
+#   tRNA pass:  --outFilterMismatchNmax 0  (stricter, for the 22 tRNAs)
+#
+# NOTE: set -J above to match your fastq_manifest.txt line count (520).
+#
+# Submit with:  qsub personalized_mtdna_remap.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module add app/STAR/2.7.10a          # EDIT: confirm exact module name/version, e.g. app/star/2.7.x
+module add app/samtools/1.20
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+MANIFEST="bam_manifest.txt"          # sample_id  bam_path  library_type
+MITGARD_OUT="mitgard_out"            # sample_id/sample_id_mitogenome.fa
+CHRM_GTF="chrM_genes.gtf"
+OUTDIR="personalized_remap_out"
+THREADS=4
+# ---------------------------
+
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+BAM=$(echo "$LINE" | cut -f2)
+LIBTYPE=$(echo "$LINE" | cut -f3)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check $MANIFEST line count" >&2
+    exit 1
+fi
+
+SAMPLE_OUT="$OUTDIR/$SAMPLE"
+mkdir -p "$SAMPLE_OUT"
+
+exec > "$SAMPLE_OUT/${SAMPLE}.remap.log" 2>&1
+echo "Processing: $SAMPLE ($LIBTYPE)"
+echo "Started at $(date)"
+
+MITOGENOME="$MITGARD_OUT/$SAMPLE/${SAMPLE}_mitogenome.fa"
+if [[ ! -f "$MITOGENOME" ]]; then
+    echo "ERROR: no MITGARD mitogenome found at $MITOGENOME" >&2
+    exit 1
+fi
+
+# MITGARD headers its output with the sample name, but chrM_genes.gtf uses
+# "chrM" as the sequence name — rewrite the header so STAR can match GTF
+# annotations to this genome. Keep this as a separate file so we never
+# modify MITGARD's original output.
+MITOGENOME_RENAMED="$SAMPLE_OUT/${SAMPLE}_mitogenome.chrM.fa"
+sed '1s/^>.*/>chrM/' "$MITOGENOME" > "$MITOGENOME_RENAMED"
+
+# ---- 1. Build tiny chrM-only STAR index from this sample's mitogenome ----
+INDEX_DIR="$SAMPLE_OUT/star_index_chrm"
+mkdir -p "$INDEX_DIR"
+
+# genomeSAindexNbases scaled down for a small (~16.5kb) genome, per STAR's
+# own recommendation (min(14, log2(GenomeLength)/2 - 1))
+# --outTmpDir is explicitly set to a per-sample path — STAR's default
+# ./_STARtmp/ is relative to the shared working directory, which causes
+# collisions when many array tasks run concurrently from the same dir.
+rm -rf "$SAMPLE_OUT/_STARtmp_genome"
+STAR \
+    --runMode genomeGenerate \
+    --genomeDir "$INDEX_DIR" \
+    --genomeFastaFiles "$MITOGENOME_RENAMED" \
+    --sjdbGTFfile "$CHRM_GTF" \
+    --sjdbOverhang 99 \
+    --genomeSAindexNbases 6 \
+    --outTmpDir "$SAMPLE_OUT/_STARtmp_genome" \
+    --runThreadN "$THREADS"
+
+# ---- 2. Extract this sample's mtDNA-derived reads from the original BAM ----
+CHRM_BAM="$SAMPLE_OUT/${SAMPLE}.chrM.bam"
+samtools view -b "$BAM" chrM > "$CHRM_BAM"
+
+if [[ "$LIBTYPE" == "PE" ]]; then
+    samtools sort -n -@ "$THREADS" -o "$SAMPLE_OUT/${SAMPLE}.nsorted.bam" "$CHRM_BAM"
+    samtools fastq -@ "$THREADS" \
+        -1 "$SAMPLE_OUT/${SAMPLE}_R1.fastq" \
+        -2 "$SAMPLE_OUT/${SAMPLE}_R2.fastq" \
+        -0 /dev/null -s /dev/null -n \
+        "$SAMPLE_OUT/${SAMPLE}.nsorted.bam"
+    READS_IN="$SAMPLE_OUT/${SAMPLE}_R1.fastq $SAMPLE_OUT/${SAMPLE}_R2.fastq"
+elif [[ "$LIBTYPE" == "SE" ]]; then
+    samtools fastq -@ "$THREADS" "$CHRM_BAM" > "$SAMPLE_OUT/${SAMPLE}_SE.fastq"
+    READS_IN="$SAMPLE_OUT/${SAMPLE}_SE.fastq"
+else
+    echo "Unrecognized library_type '$LIBTYPE'" >&2
+    exit 1
+fi
+
+# ---- 3. MAIN pass: remap with --outFilterMismatchNmax 8 ----
+mkdir -p "$SAMPLE_OUT/main_pass"
+rm -rf "$SAMPLE_OUT/main_pass/_STARtmp"
+STAR \
+    --runMode alignReads \
+    --genomeDir "$INDEX_DIR" \
+    --readFilesIn $READS_IN \
+    --outFilterMismatchNmax 8 \
+    --outSAMtype BAM SortedByCoordinate \
+    --limitBAMsortRAM 2000000000 \
+    --quantMode GeneCounts \
+    --outTmpDir "$SAMPLE_OUT/main_pass/_STARtmp" \
+    --runThreadN "$THREADS" \
+    --outFileNamePrefix "$SAMPLE_OUT/main_pass/${SAMPLE}_main_"
+
+# ---- 4. tRNA pass: remap with --outFilterMismatchNmax 0 (stricter) ----
+mkdir -p "$SAMPLE_OUT/trna_pass"
+rm -rf "$SAMPLE_OUT/trna_pass/_STARtmp"
+STAR \
+    --runMode alignReads \
+    --genomeDir "$INDEX_DIR" \
+    --readFilesIn $READS_IN \
+    --outFilterMismatchNmax 0 \
+    --outSAMtype BAM SortedByCoordinate \
+    --limitBAMsortRAM 2000000000 \
+    --quantMode GeneCounts \
+    --outTmpDir "$SAMPLE_OUT/trna_pass/_STARtmp" \
+    --runThreadN "$THREADS" \
+    --outFileNamePrefix "$SAMPLE_OUT/trna_pass/${SAMPLE}_trna_"
+
+# ---- Clean up large intermediates (comment out to keep them) ----
+rm -rf "$INDEX_DIR" "$CHRM_BAM" "$SAMPLE_OUT/${SAMPLE}.nsorted.bam" \
+       "$MITOGENOME_RENAMED" \
+       "$SAMPLE_OUT"/*.fastq \
+       "$SAMPLE_OUT/_STARtmp_genome" "$SAMPLE_OUT/main_pass/_STARtmp" "$SAMPLE_OUT/trna_pass/_STARtmp" \
+       "$SAMPLE_OUT/main_pass/${SAMPLE}_main_Aligned.sortedByCoord.out.bam" \
+       "$SAMPLE_OUT/trna_pass/${SAMPLE}_trna_Aligned.sortedByCoord.out.bam"
+
+echo "Done: $SAMPLE at $(date)"
+

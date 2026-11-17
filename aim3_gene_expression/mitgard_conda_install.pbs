@@ -1,0 +1,39 @@
+#!/bin/bash
+#PBS -N mitgard_conda_install
+#PBS -o logs/mitgard_conda_install.out
+#PBS -e logs/mitgard_conda_install.err
+#PBS -l walltime=02:00:00
+#PBS -l select=1:ncpus=4:mem=32gb
+
+# =============================================================================
+# Create the mitgard_env conda environment on a compute node.
+# Run as a batch job rather than interactively on the login node — login
+# nodes on this cluster have a low process/thread limit that breaks conda's
+# solver (RuntimeError: can't start new thread).
+#
+# Submit with:  qsub 12_mitgard_conda_install.pbs
+# =============================================================================
+
+set -euo pipefail
+
+mkdir -p logs
+
+echo "ulimit -u on this node: $(ulimit -u)"
+
+# Old conda (4.10.3) uses a memory-hungry classic solver — the previous
+# attempt used ~125GB and still got killed. Install mamba (much faster,
+# far less memory) into its own env first, since base is read-only here.
+/new-apps/miniconda3/bin/conda create -n mamba_env -c conda-forge mamba -y
+source /new-apps/miniconda3/bin/activate mamba_env
+
+mamba create -n mitgard_env -c bioconda -c conda-forge mitgard -y
+
+echo "Conda environment created. Verifying tools..."
+source /new-apps/miniconda3/bin/activate mitgard_env
+which samtools
+which bowtie2
+which minimap2
+which Trinity
+which spades.py
+which MITGARD.py || echo "MITGARD.py not on PATH from conda package — will use the git-cloned copy instead"
+

@@ -1,0 +1,94 @@
+#!/bin/bash
+#PBS -N mitgard_run
+#PBS -o logs/mitgard.out
+#PBS -e logs/mitgard.err
+#PBS -l walltime=04:00:00
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -J 1-520%30
+
+# =============================================================================
+# Run MITGARD per sample to assemble a personalized mtDNA genome from RNA-seq
+# reads. Handles PE and SE natively via MITGARD's own -1/-2 vs -S flags.
+#
+# Input: original FASTQ files directly (matches the validated test run) —
+# MITGARD does its own read-baiting/mapping internally, so no need to
+# pre-extract chrM reads ourselves.
+#
+# NOTE: test 2-3 samples of each type worked already for PE; run at least
+# one SE test before scaling to the full 518 — SE hasn't been validated yet.
+#
+# Submit with:  qsub mitgard_run.pbs
+# =============================================================================
+
+set -euo pipefail
+
+# Conda environment with all MITGARD dependencies (samtools, bowtie2,
+# minimap2, Trinity, SPAdes) and MITGARD.py itself, installed via bioconda.
+# NOTE: the bundled SPAdes has a Python 3.10+ incompatibility
+# (collections.Hashable) — already patched in this env with:
+#   grep -rl "collections.Hashable" ~/.conda/envs/mitgard_env/share/spades/ | xargs sed -i 's/collections\.Hashable/collections.abc.Hashable/g'
+# If you ever recreate this env, reapply that patch before running at scale.
+source /new-apps/miniconda3/bin/activate mitgard_env
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+MANIFEST="fastq_manifest.txt"         # sample_id  R1_path  R2_path  library_type (R2 blank for SE)
+OUTDIR="mitgard_out"
+REF_MT="rCRS.fasta"
+THREADS=8
+MEM="28G"
+# ---------------------------
+
+mkdir -p "$OUTDIR" logs
+
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+R1=$(echo "$LINE" | cut -f2)
+R2=$(echo "$LINE" | cut -f3)
+LIBTYPE=$(echo "$LINE" | cut -f4)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check $MANIFEST line count" >&2
+    exit 1
+fi
+
+echo "Processing: $SAMPLE ($LIBTYPE)"
+
+# MITGARD has no -o/output flag — it writes output relative to the current
+# working directory. Each sample gets its own directory so concurrent array
+# tasks never collide on MITGARD's non-sample-specific working folders
+# (mapped/, bowtie_index/, etc.) — critical when running many tasks at once.
+BASE_DIR="$PBS_O_WORKDIR"
+SAMPLE_OUT="$BASE_DIR/$OUTDIR/$SAMPLE"
+mkdir -p "$SAMPLE_OUT"
+REF_MT_ABS="$BASE_DIR/$REF_MT"
+
+if [[ "$LIBTYPE" == "PE" ]]; then
+    cd "$SAMPLE_OUT"
+    MITGARD.py \
+        -s "$SAMPLE" \
+        -1 "$BASE_DIR/$R1" \
+        -2 "$BASE_DIR/$R2" \
+        -R "$REF_MT_ABS" \
+        -c "$THREADS" \
+        -M "$MEM"
+    cd "$BASE_DIR"
+
+elif [[ "$LIBTYPE" == "SE" ]]; then
+    cd "$SAMPLE_OUT"
+    MITGARD.py \
+        -s "$SAMPLE" \
+        -S "$BASE_DIR/$R1" \
+        -R "$REF_MT_ABS" \
+        -c "$THREADS" \
+        -M "$MEM"
+    cd "$BASE_DIR"
+
+else
+    echo "Unrecognized library_type '$LIBTYPE' for sample $SAMPLE — expected PE or SE" >&2
+    exit 1
+fi
+
+echo "Done: $SAMPLE"
+
