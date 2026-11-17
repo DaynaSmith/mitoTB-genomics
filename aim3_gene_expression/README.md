@@ -96,8 +96,7 @@ aim3_gene_expression/
 │
 ├── resources/
 │   ├── chrM_genes.gtf
-│   ├── mito_nuclear_genes.bed
-│   └── redi_sites_target.bed
+│   └── mito_nuclear_genes.bed
 │
 └── figures/
 ```
@@ -766,12 +765,6 @@ The annotation must be compatible with the reference mitochondrial genome and ch
 Genomic intervals corresponding to nuclear-encoded mitochondrial genes.
 
 The supplied workflow generates these intervals from MitoCarta3.0 gene symbols and GENCODE gene annotations.
-
-### `redi_sites_target.bed`
-
-BED resource used in the RNA-editing-site filtering workflow.
-
-The source, genome assembly and coordinate convention of this resource should be recorded before public release.
 
 ### External references
 
