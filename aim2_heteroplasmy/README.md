@@ -63,23 +63,6 @@ aim2_heteroplasmy/
 │   └── utils/
 │       ├── plotting_themes.R
 │       └── Statistical_label_functions.R
-├── mtDNA_QC_outputs/                 # Generated outputs; not necessarily tracked
-│   ├── variant_calls_all_flagged.rds
-│   ├── variant_calls_QC_passed_hgflagged.rds
-│   ├── sample_metadata_all_flagged.rds
-│   ├── sample_metadata_QC_passed.rds
-│   ├── variant_calls_annotated_dedup_for_burden.rds
-│   ├── association_analysis/
-│   │   ├── cohort_data_prepared.rds
-│   │   ├── per_sample_heteroplasmic_burden_with_haplogroups.csv
-│   │   ├── negbin_regression_results_by_cohort.csv
-│   │   ├── model_comparison_by_cohort.csv
-│   │   └── plots/
-│   └── length_heteroplasmy_composition/
-│       ├── composition_chrM_302.csv
-│       ├── composition_chrM_567.csv
-│       ├── composition_chrM_955.csv
-│       └── composition_chrM_16182.csv
 └── figures/
 ```
 
