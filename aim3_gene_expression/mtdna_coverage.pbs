@@ -1,0 +1,75 @@
+#!/bin/bash
+#PBS -N mtdna_coverage
+#PBS -o logs/mtdna_cov.out
+#PBS -e logs/mtdna_cov.err
+#PBS -l walltime=00:30:00
+#PBS -l select=1:ncpus=2:mem=4gb
+#PBS -J 1-540
+
+# =============================================================================
+# Extract chrM reads from each BAM and compute coverage breadth/depth.
+# One array task = one sample. Output: one summary line per sample in
+# coverage_summaries/<sample>_chrM_coverage.txt
+#
+# NOTE: set the -J range above to match your line count in bam_manifest.txt.
+# You have 440 PE + 100 SE = 540 total samples, so -J 1-540 is currently set.
+#
+# Submit with:  qsub 04_mtdna_coverage.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module load app/samtools/1.20
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+MANIFEST="bam_manifest.txt"
+OUTDIR="coverage_summaries"
+TMPDIR_LOCAL="chrM_tmp"
+MT_LENGTH=16569
+# ---------------------------
+
+mkdir -p "$OUTDIR" "$TMPDIR_LOCAL" logs
+
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+BAM=$(echo "$LINE" | cut -f2)
+LIBTYPE=$(echo "$LINE" | cut -f3)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check $MANIFEST line count" >&2
+    exit 1
+fi
+
+echo "Processing: $SAMPLE ($LIBTYPE)"
+
+CHRM_BAM="$TMPDIR_LOCAL/${SAMPLE}.chrM.bam"
+
+samtools view -b "$BAM" chrM > "$CHRM_BAM"
+samtools index "$CHRM_BAM"
+
+# Total reads on chrM and multi-mapping-relevant flag stats, useful for the
+# NUMT (nuclear mitochondrial pseudogene) sanity check mentioned earlier
+CHRM_READS=$(samtools view -c "$CHRM_BAM")
+
+samtools depth -a "$CHRM_BAM" | awk -v sample="$SAMPLE" -v lib="$LIBTYPE" -v reads="$CHRM_READS" -v mtlen="$MT_LENGTH" '
+{
+    total++
+    sum += $3
+    if ($3 > 0)  covered1++
+    if ($3 >= 5)  covered5++
+    if ($3 >= 10) covered10++
+}
+END {
+    if (total == 0) total = mtlen   # guard against zero-coverage samples
+    printf "%s\t%s\t%d\t%.4f\t%.4f\t%.4f\t%.2f\n", \
+        sample, lib, reads, \
+        covered1/total, covered5/total, covered10/total, sum/total
+}' > "$OUTDIR/${SAMPLE}_chrM_coverage.txt"
+
+# Clean up per-sample chrM BAM to save disk (comment out if you want to keep them)
+rm -f "$CHRM_BAM" "${CHRM_BAM}.bai"
+
+echo "Done: $SAMPLE"
+

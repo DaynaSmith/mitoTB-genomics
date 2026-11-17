@@ -1,0 +1,61 @@
+#!/bin/bash
+#PBS -N star_align_SE
+#PBS -o logs/align_SE.out
+#PBS -e logs/align_SE.err
+#PBS -l walltime=08:00:00
+#PBS -l select=1:ncpus=16:mem=32gb
+#PBS -J 1-100
+
+# =============================================================================
+# STAR alignment for SINGLE-END samples, submitted as a PBS job array.
+#
+# Submit with:  qsub align_SE.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module load app/STAR/2.7.10a              # EDIT
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+INDEX_DIR="star_index_grch38"
+MANIFEST="samples_SE.txt"
+OUTDIR="aligned_SE"
+THREADS=16
+# ---------------------------
+
+mkdir -p "$OUTDIR" logs
+
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+FQ=$(echo "$LINE" | cut -f2)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check samples_SE.txt line count" >&2
+    exit 1
+fi
+
+echo "Aligning sample: $SAMPLE"
+echo "FASTQ: $FQ"
+
+SAMPLE_OUT="$OUTDIR/$SAMPLE"
+mkdir -p "$SAMPLE_OUT"
+
+STAR \
+    --runMode alignReads \
+    --genomeDir "$INDEX_DIR" \
+    --readFilesIn "$FQ" \
+    --readFilesCommand zcat \
+    --outSAMtype BAM SortedByCoordinate \
+    --outFilterMultimapNmax 1 \
+    --outFilterMismatchNmax 8 \
+    --quantMode GeneCounts \
+    --runThreadN "$THREADS" \
+    --outFileNamePrefix "$SAMPLE_OUT/${SAMPLE}_"
+
+module load app/samtools/1.20              # EDIT
+samtools index "$SAMPLE_OUT/${SAMPLE}_Aligned.sortedByCoord.out.bam"
+
+echo "Done: $SAMPLE"
+

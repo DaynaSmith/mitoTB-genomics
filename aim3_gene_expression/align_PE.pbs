@@ -1,0 +1,66 @@
+#!/bin/bash
+#PBS -N star_align_PE
+#PBS -o logs/align_PE.out
+#PBS -e logs/align_PE.err
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=16:mem=32gb
+#PBS -J 1-411
+
+# =============================================================================
+# STAR alignment for PAIRED-END samples, submitted as a PBS job array.
+# One array task = one sample. Reads sample info from samples_PE.txt by line
+# number, so line 1 -> array task 1, line 2 -> array task 2, etc.
+#
+# Submit with:  qsub align_PE.pbs
+# =============================================================================
+
+set -euo pipefail
+
+module load app/STAR/2.7.10a              # EDIT: your cluster's STAR module, or `conda activate star_env`
+
+cd "$PBS_O_WORKDIR"
+
+# ---- EDIT THESE PATHS ----
+INDEX_DIR="star_index_grch38"
+MANIFEST="samples_PE.txt"
+OUTDIR="aligned_PE"
+THREADS=16
+# ---------------------------
+
+mkdir -p "$OUTDIR" logs
+
+# Pull the line corresponding to this array task
+LINE=$(sed -n "${PBS_ARRAY_INDEX}p" "$MANIFEST")
+SAMPLE=$(echo "$LINE" | cut -f1)
+R1=$(echo "$LINE" | cut -f2)
+R2=$(echo "$LINE" | cut -f3)
+
+if [[ -z "$SAMPLE" ]]; then
+    echo "No sample found for array task $PBS_ARRAY_INDEX — check samples_PE.txt line count" >&2
+    exit 1
+fi
+
+echo "Aligning sample: $SAMPLE"
+echo "R1: $R1"
+echo "R2: $R2"
+
+SAMPLE_OUT="$OUTDIR/$SAMPLE"
+mkdir -p "$SAMPLE_OUT"
+
+STAR \
+    --runMode alignReads \
+    --genomeDir "$INDEX_DIR" \
+    --readFilesIn "$R1" "$R2" \
+    --readFilesCommand zcat \
+    --outSAMtype BAM SortedByCoordinate \
+    --outFilterMultimapNmax 1 \
+    --outFilterMismatchNmax 8 \
+    --quantMode GeneCounts \
+    --runThreadN "$THREADS" \
+    --outFileNamePrefix "$SAMPLE_OUT/${SAMPLE}_"
+
+# Index the sorted BAM for downstream mtDNA extraction / coverage checks
+module load app/samtools/1.20
+samtools index "$SAMPLE_OUT/${SAMPLE}_Aligned.sortedByCoord.out.bam"
+
+echo "Done: $SAMPLE"
