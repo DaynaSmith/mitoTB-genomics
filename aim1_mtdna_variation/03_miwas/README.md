@@ -39,6 +39,8 @@ Suggested repository layout (input datasets and outputs should only be committed
 ├── README.md
 ├── scripts/
 │   ├── miWAS_cohesive_pipeline.R   # Main analysis
+│   ├── miWAS_power_calculations.R  # Script to conduct power calculations
+│   ├── power_curves.R              # Script to visualise statistical power outputs
 │   └── PCA.R                          # Standalone exploratory PCA
 ├── data/                              # Input files; not included here
 │   ├── sample_data.csv
