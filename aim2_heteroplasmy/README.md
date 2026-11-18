@@ -62,6 +62,7 @@ aim2_heteroplasmy/
 │   │   └── heteroplasmic_region_type_and_consequence_barplots.R
 │   └── utils/
 │       ├── plotting_themes.R
+│       ├── heteroplasmy_power_calculations.R
 │       └── Statistical_label_functions.R
 └── figures/
 ```
